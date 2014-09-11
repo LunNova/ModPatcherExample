@@ -65,7 +65,7 @@ dependencies {
 
 jar {
     duplicatesStrategy = 'exclude'
-    from((configurations.runtime - configurations.provided).collect { it.isDirectory() ? it : zipTree(it) }) {
+    from((configurations.runtime - configurations.provided).filter{it.exists()}.collect { it.isDirectory() ? it : zipTree(it) }) {
         exclude "META-INF/**"
         exclude "mcmod.info"
     }
