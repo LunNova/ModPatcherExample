@@ -1,74 +1,76 @@
 buildscript {
     repositories {
-        mavenCentral()
+        jcenter()
+        maven {
+            name = "nallar"
+            url = "https://repo.nallar.me/"
+        }
         maven {
             name = "forge"
             url = "http://files.minecraftforge.net/maven"
         }
-        maven {
-            name = "sonatype"
-            url = "https://oss.sonatype.org/content/repositories/snapshots/"
-        }
     }
     dependencies {
-        classpath 'net.minecraftforge.gradle:ForgeGradle:1.2-SNAPSHOT'
+        classpath 'net.minecraftforge.gradle:ForgeGradle:2.2-SNAPSHOT'
     }
 }
-
-apply plugin: 'forge'
-
-// Extended project information
-ext.projectName = 'LogSpamMustDie'
-ext.inceptionYear = '2014'
-ext.packaging = 'jar'
-ext.url = 'http://nallar.me/minecraft'
-ext.description = 'Log Spam Must Die'
-ext.organization = 'nallar.me'
-ext.mcVersion = '1.7.10'
-ext.forgeVersion = "10.13.0.1208"
-ext.fullForgeVersion = mcVersion + "-" + forgeVersion
-
-minecraft {
-    version = fullForgeVersion
-    runDir = "eclipse/assets"
-}
-
-sourceCompatibility = '1.6'
-targetCompatibility = '1.6'
-
-version = mcVersion + '-SNAPSHOT'
-group = 'me.nallar'
-archivesBaseName = 'logspammustdie'
-
-// Define variables
-ext.buildNumber = project.hasProperty("buildNumber") ? buildNumber : '0'
-ext.ciSystem = project.hasProperty("ciSystem") ? ciSystem : 'unknown'
-ext.commit = project.hasProperty("commit") ? commit : 'unknown'
-
-repositories {
-    mavenCentral()
-    maven { url 'http://repo.nallar.me/' }
-}
+apply plugin: 'net.minecraftforge.gradle.forge'
+apply plugin: 'idea'
 
 configurations {
-    all {
-        resolutionStrategy.cacheChangingModulesFor 0, 'seconds'
+    bundledLibs
+    compile {
+        extendsFrom bundledLibs
     }
-    provided
-    compile.extendsFrom provided
+}
+
+ext.mcVersion = "1.10.2"
+ext.runMcVersion = "1.10.2"
+ext.forgeVersion = "12.18.1.2076"
+ext.forgeMappings = "snapshot_20160518"
+group = "me.nallar.modpatcherexample" // http://maven.apache.org/guides/mini/guide-naming-conventions.html
+archivesBaseName = "LogSpamMustDie"
+
+def calculateVersion() {
+    def ver = project.runMcVersion
+    if (System.env.BUILD_NUMBER != null)
+        return ver + "-jenkins." + System.env.BUILD_NUMBER
+    if (project.hasProperty("release"))
+        return ver + '-' + project.release
+    return ver + "-dev"
+}
+
+version = calculateVersion()
+
+repositories {
+    maven { url = 'https://repo.nallar.me/' }
+}
+
+configurations.all {
+    resolutionStrategy.cacheChangingModulesFor 10, 'seconds'
 }
 
 dependencies {
-    provided 'com.google.guava:guava:18.0'
-    compile group:'me.nallar', name:'modpatcher', version:'1.7.10-SNAPSHOT', changing: true
+    bundledLibs "me.nallar:ModPatcher:$mcVersion-SNAPSHOT:api"
+    compile 'org.projectlombok:lombok:1.16.6'
 }
 
-jar {
-    duplicatesStrategy = 'exclude'
-    from((configurations.runtime - configurations.provided).filter{it.exists()}.collect { it.isDirectory() ? it : zipTree(it) }) {
-        exclude "META-INF/**"
-        exclude "mcmod.info"
+tasks.withType(JavaCompile) {
+    sourceCompatibility = 7
+    targetCompatibility = 7
+    options.with {
+        encoding = 'UTF-8'
+        compilerArgs << "-Xlint:all" << '-Xlint:-path' << '-Xlint:-processing'
     }
+}
+
+minecraft {
+    version = "${project.mcVersion}-${project.forgeVersion}"
+    runDir = "run"
+    mappings = project.forgeMappings
+
+    replace "@MOD_VERSION@", project.version
+    replace "@MC_VERSION@", runMcVersion
 }
 
 processResources {
@@ -76,30 +78,29 @@ processResources {
     inputs.property "version", project.version
     inputs.property "mcversion", project.minecraft.version
 
-    // replace stuff in mcmod.info, nothing else
-    from(sourceSets.main.resources.srcDirs) {
-        include 'mcmod.info'
+    filesMatching("mcmod.info") {
+        expand 'version': project.version, 'mcversion': runMcVersion
+    }
+    filesMatching("modpatcher.version") {
+        expand 'version': project.version
+    }
+}
 
-        // replace version and mcversion
-        expand 'version': project.version, 'mcversion': project.minecraft.version, 'name': project.projectName
+jar {
+    from(configurations.bundledLibs.collect { it.isDirectory() ? it : zipTree(it) }) {
+        exclude "META-INF/**"
     }
 
-    // copy everything else, thats not the mcmod.info
-    from(sourceSets.main.resources.srcDirs) { exclude 'mcmod.info' }
+    manifest.mainAttributes("FMLCorePlugin": "me.nallar.logspammustdie.CoreMod")
 }
 
-// Source compiler configuration
-tasks.withType(JavaCompile) {
-    options.compilerArgs += [ '-Xlint:all', '-Xlint:-path' ]
-    options.deprecation = true
-    options.encoding = 'utf8'
+wrapper {
+    gradleVersion = "3.0"
+    def jvmOpts = "-Xmx2G"
+    inputs.property("jvmOpts", jvmOpts)
+    doLast {
+        def optsEnvVar = "DEFAULT_JVM_OPTS"
+        scriptFile.write scriptFile.text.replace("$optsEnvVar=\"\"", "$optsEnvVar=\"$jvmOpts\"")
+        batchScript.write batchScript.text.replace("set $optsEnvVar=", "set $optsEnvVar=$jvmOpts")
+    }
 }
-
-jar.manifest.mainAttributes(
-        "Built-By": System.properties['user.name'],
-        "Created-By": System.properties['java.vm.version'] + " (" + System.properties['java.vm.vendor'] + ")",
-        "Implementation-Title": name,
-        "Implementation-Version": version + "+" + ciSystem + "-b" + buildNumber + ".git-" + commit,
-        "Implementation-Vendor": url,
-        "FMLCorePlugin": "me.nallar.logspammustdie.CoreMod"
-)

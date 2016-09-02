@@ -1,7 +1,7 @@
 {
   "modListVersion": 2,
   "modList": [{
-    "modid": "mod_${name}",
+    "modid": "LogSpamMustDie",
     "name": "Log Spam Must Die",
     "description": "Example Mod Patcher coremod which removes annoying log spam",
     "version": "${version}",
